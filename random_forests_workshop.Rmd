@@ -1,0 +1,201 @@
+---
+title: "Intro to Random Forests"
+subtitle: "R-Ladies Philly Workshop"
+author: "Karla Fettich"
+date: "September 15, 2020"
+output: ioslides_presentation
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(rsample)      # data splitting 
+library(randomForest) # basic implementation
+library(caret)        # an aggregator package for performing many machine learning models
+library(scales)
+library(distr)
+library(caret)
+
+```
+
+## Overview 
+
+1. Trees vs. Forests
+2. Basic implementation
+3. Gotchas
+
+## Dataset: The Case of the Mondays (COTM)
+
+Ficticious scientists conducted a ficticious survey of 1000 ficticious people, collecting the following variables of interest: 
+
+- Age
+- Weekly routine (does the person have a regular routine of school/work or not?)
+- How much fun is had on weekends
+- Alcohol consumption on weekends
+- How much work, boss and colleagues are liked
+- How much work stress is experienced
+- Health, Financial and Social support status
+
+# Who will get COTM?
+
+## The Model
+
+1. Stratify the predictors' space into regions using binary splitting rules (decision trees)
+2. Select the predictor and the cutpoint such that the split leads to the greatest reduction in the variance of the outcome
+3. For each region found, predict either the mean of Y in the region (continuous case) or the most common class (classification case)
+4. Continue until some criterion is reached (e.g. no region contains more than 5 observations)
+
+## Trees vs Forests
+
+| Decision Tree | Random Forest |
+| ---- | ---- |
+| Single tree | Collection of different trees |
+| Uses entire dataset | Uses boostrapped data |
+| Uses all features | Uses subsets of features | 
+| One tree determines prediction | All trees contribute to prediction |
+
+## Random Forest Algorithm
+
+The basic algorithm for a regression random forest can be generalized to the following:
+
+Given training data set
+
+- Select number of trees to build (ntrees)
+- for i = 1 to ntrees do
+
+1. Generate a bootstrap sample of the original data
+2. Grow a regression tree to the bootstrapped data
+3. for each split do
+3.1 Select m variables at random from all p variables
+3.2 Pick the best variable/split-point among the m
+3.3 Split the node into two child nodes
+4. Use typical tree model stopping criteria to determine when a tree is complete (but do not prune)
+
+## Advantages & Disadvantages
+
+| Advantages | Disadvantages |
+| ---- | ---- |
+| Good performance | Advanced boosting algorithms can perform better |
+| “out-of-the box” | Slow on large data sets |
+| Built-in validation set | Not very interpretable | 
+| Robust to outliers |  |
+
+```{r create fake dataset, echo = FALSE}
+
+# library(distr)
+# library(scales)
+# 
+# set.seed(20200915)
+# 
+# df <- data.frame(age = rescale(r(Norm(mean = 35, sd = 10))(1000), to = c(21, 65)),
+#                  cotm = as.factor(c(rep(1,100),
+#                           rep(0, 900))),
+#                  weekly_routine = c(rep("school",60), rep("work",30), rep("none",10),
+#                                     rep("school",200), rep("work",200), rep("none",500)),
+#                  weekend_fun = rescale(c(r(Norm(mean = 8, sd = 2))(100),
+#                                  r(Norm(mean = 6, sd = 4))(900)), to = c(1,10)),
+#                  weekend_alc_consumption = rescale(c(r(Norm(mean = 7.5, sd = 1.5))(100),
+#                                              r(Norm(mean = 6.6, sd = 2))(900)), to = c(1,10)),
+#                  like_work  = rescale(c(r(Norm(mean = 4, sd = 3))(100),
+#                                 r(Norm(mean = 6, sd = 3.5))(900)), to = c(1,10)),
+#                  like_boss  = rescale(c(r(Norm(mean = 5, sd = 2.5))(100),
+#                                 r(Norm(mean = 6, sd = 2))(900)), to = c(1,10)),
+#                  like_colleagues = rescale(c(r(Norm(mean = 5, sd = 3))(100),
+#                                      r(Norm(mean = 7, sd = 2))(900)), to = c(1,10)),
+#                  work_stress = rescale(c(r(Norm(mean = 5, sd = 2))(100),
+#                                  r(Norm(mean = 3, sd = 2))(900)), to = c(1,10)),
+#                  health_status = rescale(c(r(Norm(mean = 7, sd = 2.5))(100),
+#                                    r(Norm(mean = 6, sd = 2))(900)), to = c(1,10)),
+#                  financial_status = rescale(r(Norm(mean = 5, sd = 3))(1000), to = c(1,10)),
+#                  social_support = rescale(r(Norm(mean = 6, sd = 3))(1000), to = c(1,10)))
+# save(df, file = "df.RData")
+# 
+load("df.RData")
+
+```
+
+# Basic implementation
+
+## Train & Test Samples
+
+```{r, echo = TRUE}
+set.seed(123)   # for reproduciblity
+
+train <- sample(1:nrow(df), .67*nrow(df))
+
+df_train <- df[train,]
+df_test <- df[-train,]
+
+```
+
+## Model
+
+```{r, echo = TRUE}
+set.seed(123)   # for reproduciblity
+
+rf <- randomForest(formula =  cotm ~ ., data  = df)
+
+rf
+```
+
+## Out-of-bag estimate of error
+
+- Benefit of bootstrapping: Out-of-bag (OOB) sample that provides an efficient and reasonable approximation of the test error
+- Built-in validation set (no need to sacrifice any training data for validation). 
+- Calculated by counting the number of points that were misclassified (14 non-COTM instances, and 66 COTM instances) and dividing it by the total number of observations (80/1000 = 8%).
+
+## Prediction 
+
+```{r, echo = TRUE}
+predicted_values <- predict(rf, df_test)
+confusionMatrix(predicted_values, df_test$cotm)$table
+```
+
+## Variable importance
+
+```{r, echo = FALSE}
+varImpPlot(rf)
+```
+
+# Gotchas
+
+## Imbalanced samples
+
+```{r, echo = FALSE}
+
+df_train_balanced <- rbind(
+  df_train[df_train$cotm == 1,],
+  df_train[sample(which(df_train$cotm == 0), length(which(df_train$cotm == 1))), ])
+# table(df_train_balanced$cotm)
+```
+
+
+```{r, echo = TRUE}
+set.seed(123)
+rf <- randomForest(formula =  cotm ~ ., data  = df_train_balanced)
+rf
+```
+
+## Lack of validation in variable selection 
+
+```{r, echo = FALSE}
+
+df_train_balanced$random_var1 <- rescale(r(Norm(mean = 7, sd = 3))(nrow(df_train_balanced)), to = c(1,10))
+df_train_balanced$random_var2 <- sample(c(1:4), nrow(df_train_balanced), replace = T)
+set.seed(123)
+rf <- randomForest(formula =  cotm ~ ., data  = df_train_balanced)
+varImpPlot(rf)
+```
+
+## Correlated predictors
+
+Random forests can be sensitive to correlated predictors
+
+
+## Additional resources:
+
+- Elements of statistical learning
+- https://uc-r.github.io/random_forests
+- https://www.blopig.com/blog/2017/04/a-very-basic-introduction-to-random-forests-using-r/
+
