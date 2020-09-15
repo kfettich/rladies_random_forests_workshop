@@ -3,7 +3,9 @@ title: "Intro to Random Forests"
 subtitle: "R-Ladies Philly Workshop"
 author: "Karla Fettich"
 date: "September 15, 2020"
-output: ioslides_presentation
+output: 
+  ioslides_presentation:
+    logo: forest_intro.png
 
 ---
 
@@ -19,13 +21,21 @@ library(caret)
 
 ```
 
+
 ## Overview 
 
 1. Trees vs. Forests
 2. Basic implementation
 3. Gotchas
 
-## Dataset: The Case of the Mondays (COTM)
+![](forest.png)
+
+
+## The Case of the Mondays (COTM)
+
+![](monday_feels.jpg)
+
+## Dataset
 
 Ficticious scientists conducted a ficticious survey of 1000 ficticious people, collecting the following variables of interest: 
 
@@ -48,29 +58,25 @@ Ficticious scientists conducted a ficticious survey of 1000 ficticious people, c
 
 ## Trees vs Forests
 
-| Decision Tree | Random Forest |
+|Random Forest | Decision Tree | 
 | ---- | ---- |
-| Single tree | Collection of different trees |
-| Uses entire dataset | Uses boostrapped data |
-| Uses all features | Uses subsets of features | 
-| One tree determines prediction | All trees contribute to prediction |
+| Collection of different trees | Single tree |
+| Uses boostrapped data | Uses entire dataset |
+| Uses subsets of features | Uses all features | 
+| All trees contribute to prediction | One tree determines prediction |
 
 ## Random Forest Algorithm
-
-The basic algorithm for a regression random forest can be generalized to the following:
-
-Given training data set
 
 - Select number of trees to build (ntrees)
 - for i = 1 to ntrees do
 
-1. Generate a bootstrap sample of the original data
-2. Grow a regression tree to the bootstrapped data
-3. for each split do
-3.1 Select m variables at random from all p variables
-3.2 Pick the best variable/split-point among the m
-3.3 Split the node into two child nodes
-4. Use typical tree model stopping criteria to determine when a tree is complete (but do not prune)
+1. Generate a bootstrap sample
+2. Grow a regression tree to sampled data:
+3. for each split:
+    - Select m variables at random
+    - Pick the best variable/split-point among the m
+    - Split the node into two child nodes
+4. Use stopping criteria to determine when a tree is complete (but do not prune)
 
 ## Advantages & Disadvantages
 
@@ -115,7 +121,7 @@ load("df.RData")
 
 ```
 
-# Basic implementation
+# Basic Implementation
 
 ## Train & Test Samples
 
@@ -129,21 +135,26 @@ df_test <- df[-train,]
 
 ```
 
+
+
+
+![](train_test.png)
+
 ## Model
 
 ```{r, echo = TRUE}
 set.seed(123)   # for reproduciblity
-
 rf <- randomForest(formula =  cotm ~ ., data  = df)
 
 rf
 ```
 
-## Out-of-bag estimate of error
+## Out-of-bag (OOB) estimate of error
 
-- Benefit of bootstrapping: Out-of-bag (OOB) sample that provides an efficient and reasonable approximation of the test error
-- Built-in validation set (no need to sacrifice any training data for validation). 
-- Calculated by counting the number of points that were misclassified (14 non-COTM instances, and 66 COTM instances) and dividing it by the total number of observations (80/1000 = 8%).
+- Calculated by counting the number of points that were misclassified (14 non-COTM instances, and 66 COTM instances) and dividing it by the total number of observations: 80/1000 = 8%.
+- A benefit of bootstrapping: 
+    - OOB sample provides an efficient and reasonable approximation of the test error
+    - Built-in validation set (no need to sacrifice any training data for validation)
 
 ## Prediction 
 
