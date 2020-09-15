@@ -1,82 +1,63 @@
 ---
 title: "Intro to Random Forests"
 subtitle: "R-Ladies Philly Workshop"
-author: "Karla Fettich"
+author: "Karla Fettich, PhD"
 date: "September 15, 2020"
 output: 
-  ioslides_presentation:
-    logo: forest_intro.png
-
+    ioslides_presentation:
+      logo: forest_intro.png
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
-library(rsample)      # data splitting 
 library(randomForest) # basic implementation
 library(caret)        # an aggregator package for performing many machine learning models
 library(scales)
 library(distr)
 library(caret)
+library(ranger)
 
 ```
 
-
 ## Overview 
 
-1. Trees vs. Forests
-2. Basic implementation
+1. Background
+
+    Trees vs. Forsets; Random Forest Algorithm; Advatanges / Distadvantages
+
+2. Basic Implementation
+
+    Dataset & research problem; Model basics & key terms (OOB error & parameters); Tuning; Prediction; Variable Importance
+
 3. Gotchas
 
-![](forest.png)
+    Imbalanced samples; Variable importance validation; Multicollinearity
 
+4. Resources & further reading
 
-## The Case of the Mondays (COTM)
+<!-- ## Generalized Model for Decision Trees and Random Forests-->
 
-![](monday_feels.jpg)
-
-## Dataset
-
-Ficticious scientists conducted a ficticious survey of 1000 ficticious people, collecting the following variables of interest: 
-
-- Age
-- Weekly routine (does the person have a regular routine of school/work or not?)
-- How much fun is had on weekends
-- Alcohol consumption on weekends
-- How much work, boss and colleagues are liked
-- How much work stress is experienced
-- Health, Financial and Social support status
-
-# Who will get COTM?
-
-## The Model
-
-1. Stratify the predictors' space into regions using binary splitting rules (decision trees)
-2. Select the predictor and the cutpoint such that the split leads to the greatest reduction in the variance of the outcome
-3. For each region found, predict either the mean of Y in the region (continuous case) or the most common class (classification case)
-4. Continue until some criterion is reached (e.g. no region contains more than 5 observations)
+<!-- 1. Stratify the predictors' space into regions using binary splitting rules (decision trees) -->
+<!-- 2. Select the predictor and the cutpoint such that the split leads to the greatest reduction in the variance of the outcome -->
+<!-- 3. For each region found, predict either the mean of Y in the region (continuous case) or the most common class (classification case) -->
+<!-- 4. Continue until some criterion is reached (e.g. no region contains more than 5 observations) -->
 
 ## Trees vs Forests
 
-|Random Forest | Decision Tree | 
+| Decision Tree | Random Forest |
 | ---- | ---- |
-| Collection of different trees | Single tree |
-| Uses boostrapped data | Uses entire dataset |
-| Uses subsets of features | Uses all features | 
-| All trees contribute to prediction | One tree determines prediction |
+| Single tree | Collection of different trees |
+| Uses entire dataset | Uses boostrapped data |
+| Uses all features | Uses subsets of features | 
+| One tree determines prediction | All trees contribute to prediction |
 
 ## Random Forest Algorithm
 
-- Select number of trees to build (ntrees)
-- for i = 1 to ntrees do
+The basic algorithm for a regression random forest can be generalized to the following:
 
-1. Generate a bootstrap sample
-2. Grow a regression tree to sampled data:
-3. for each split:
-    - Select m variables at random
-    - Pick the best variable/split-point among the m
-    - Split the node into two child nodes
-4. Use stopping criteria to determine when a tree is complete (but do not prune)
+![](general_algorithm.png)
+(from [UC Business Analytics R Programming Guide](https://uc-r.github.io/random_forests))
 
 ## Advantages & Disadvantages
 
@@ -123,6 +104,24 @@ load("df.RData")
 
 # Basic Implementation
 
+## The Case of the Mondays (COTM)
+
+![](monday_feels.jpg)
+
+## Dataset
+
+Ficticious scientists conducted a ficticious survey of 1000 ficticious people, collecting the following variables of interest: 
+
+- Age
+- Weekly routine (does the person have a regular routine of school/work or not?)
+- How much fun is had on weekends
+- Alcohol consumption on weekends
+- How much work, boss and colleagues are liked
+- How much work stress is experienced
+- Health, Financial and Social support status
+
+# Who will get COTM?
+
 ## Train & Test Samples
 
 ```{r, echo = TRUE}
@@ -135,38 +134,124 @@ df_test <- df[-train,]
 
 ```
 
-
-
-
 ![](train_test.png)
 
 ## Model
 
 ```{r, echo = TRUE}
+# library(randomForest)
 set.seed(123)   # for reproduciblity
-rf <- randomForest(formula =  cotm ~ ., data  = df)
 
+rf <- randomForest(formula =  cotm ~ ., data  = df_train,
+                   importance = TRUE)
 rf
 ```
 
-## Out-of-bag (OOB) estimate of error
+<!-- ## Out-of-bag estimate of error -->
 
-- Calculated by counting the number of points that were misclassified (14 non-COTM instances, and 66 COTM instances) and dividing it by the total number of observations: 80/1000 = 8%.
-- A benefit of bootstrapping: 
-    - OOB sample provides an efficient and reasonable approximation of the test error
-    - Built-in validation set (no need to sacrifice any training data for validation)
+<!-- - Each decision tree in the forest uses subsample for 'training' (in-bag sample) and tests the model on a 'test' subsample (out-of-bag sample) -->
+<!-- - The errors from the out-of-bag samples are aggregated, resulting in an overall estimate of errors per class -->
+<!-- - OOB estimate of error rate = count of misclassifications (14 non-COTM instances, and 66 COTM instances) divided by number of observations (80/1000 = 8%). -->
+
+## Model Parameters
+
+```{r, echo = TRUE}
+set.seed(123)   # for reproduciblity
+
+rf_formula = paste0("cotm ~ ",
+                    paste0(colnames(df[,-2]), collapse = " + "))
+
+rf1 <- randomForest(formula =  as.formula(rf_formula), 
+                   data  = df_train,
+                   ntree = 300,   # number of trees
+                   mtry = 2,      # number of vars sampled per split
+                   sampsize = 400, # size of samples to draw
+                   nodesize = 3, # minimum number of terminal nodes
+                   importance = TRUE)   # keep importance values of variables
+```
+
+## Tuning
+
+(see [UC Business Analytics tutorial](https://uc-r.github.io/random_forests#tune) and [Julia Silge's tutorial](https://juliasilge.com/blog/sf-trees-random-tuning/) for more info on tuning)
+
+```{r, echo = TRUE}
+# library(ranger)
+
+# hyperparameter grid search
+hyper_grid <- expand.grid(
+  num_trees = seq(400,600, by = 50),
+  mtry       = seq(2, 11, by = 2),
+  node_size  = seq(3, 9, by = 2),
+  sample_size = c(.55, .632, .70, .80),
+  OOB_RMSE   = 0
+)
+
+```
+
+Total number of combinations: `r nrow(hyper_grid)`
+
+## Tuning
+
+```{r, echo = TRUE}
+for(i in 1:nrow(hyper_grid)) {
+  
+  # train model
+  model <- ranger(
+    formula         = cotm ~ ., 
+    data            = df_train, 
+    num.trees       = hyper_grid$num_trees[i],
+    mtry            = hyper_grid$mtry[i],
+    min.node.size   = hyper_grid$node_size[i],
+    sample.fraction = hyper_grid$sample_size[i],
+    seed            = 123
+  )
+  
+  # add OOB error to grid
+  hyper_grid$OOB_RMSE[i] <- sqrt(model$prediction.error)
+}
+```
+
+## Tuning
+
+```{r, echo = TRUE}
+hyper_grid <- hyper_grid %>% 
+  dplyr::arrange(OOB_RMSE)
+
+head(hyper_grid, 5)
+```
+
+## Tuning 
+
+```{r, echo = TRUE}
+set.seed(123)
+rf2 <- randomForest(formula = as.formula(rf_formula), data  = df_train,
+                   ntree = hyper_grid$num_trees[1], mtry = hyper_grid$mtry[1],
+                   sampsize = ceiling(hyper_grid$sample_size[1]*nrow(df)),
+                   nodesize = hyper_grid$node_size[1], importance = TRUE)
+rf2
+```
 
 ## Prediction 
 
 ```{r, echo = TRUE}
-predicted_values <- predict(rf, df_test)
+predicted_values <- predict(rf2, df_test)
 confusionMatrix(predicted_values, df_test$cotm)$table
 ```
 
-## Variable importance
+## Variable importance: Accuracy
 
-```{r, echo = FALSE}
-varImpPlot(rf)
+```{r, echo = TRUE}
+# For each variable, scramble values (maintain distribution); build a tree; 
+# assess accuracy and loss of accuracy as a result of scrambling.
+varImpPlot(rf2, type = 1)
+```
+
+## Variable importance: Gini
+
+```{r, echo = TRUE}
+# If the variable is useful, it will split mixed labeled nodes into 
+# pure single class nodes. Gini index is an indicator of node 'purity'.
+varImpPlot(rf2, type = 2)
 ```
 
 # Gotchas
@@ -181,32 +266,45 @@ df_train_balanced <- rbind(
 # table(df_train_balanced$cotm)
 ```
 
-
 ```{r, echo = TRUE}
 set.seed(123)
 rf <- randomForest(formula =  cotm ~ ., data  = df_train_balanced)
 rf
 ```
 
-## Lack of validation in variable selection 
+## Some solutions
+
+(see [this tech report](https://statistics.berkeley.edu/sites/default/files/tech-reports/666.pdf) for additional info)
+
+1. Balance data via under/over sampling
+2. Add weights to random forest model
+3. Quantile-classifer (RFQ) approach
+
+Package `randomForestSRC` has implementations for 2 & 3
+
+## Validation of variable importance 
 
 ```{r, echo = FALSE}
 
-df_train_balanced$random_var1 <- rescale(r(Norm(mean = 7, sd = 3))(nrow(df_train_balanced)), to = c(1,10))
-df_train_balanced$random_var2 <- sample(c(1:4), nrow(df_train_balanced), replace = T)
+df_train$random_var1 <- rescale(r(Norm(mean = 7, sd = 3))(nrow(df_train)), to = c(1,10))
+df_train$random_var2 <- sample(c(1:4), nrow(df_train), replace = T)
 set.seed(123)
-rf <- randomForest(formula =  cotm ~ ., data  = df_train_balanced)
+rf <- randomForest(formula =  cotm ~ ., data  = df_train,
+                   importance = TRUE)
 varImpPlot(rf)
 ```
 
 ## Correlated predictors
 
-Random forests can be sensitive to correlated predictors
+Random forests can be sensitive to correlated predictors; this is particularly problematic when using random forest for variable selection. Some alternatives:
 
+1. Conditional Inference Forests (`partykit::cforest`)
+2. Boruta (`Boruta::Boruta`)
 
-## Additional resources:
+## References & Resources:
 
-- Elements of statistical learning
+- [Elements of statistical learning](https://web.stanford.edu/~hastie/Papers/ESLII.pdf)
+- [Leo Breiman: Random Forests, 2001 paper](https://www.stat.berkeley.edu/~breiman/randomforest2001.pdf)
 - https://uc-r.github.io/random_forests
 - https://www.blopig.com/blog/2017/04/a-very-basic-introduction-to-random-forests-using-r/
 
