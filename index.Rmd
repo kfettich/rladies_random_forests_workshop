@@ -301,6 +301,12 @@ Random forests can be sensitive to correlated predictors; this is particularly p
 1. Conditional Inference Forests (`partykit::cforest`)
 2. Boruta (`Boruta::Boruta`)
 
+## Case of the Mondays, via treeheatr!
+
+Check out [treeheatr](https://trang1618.github.io/treeheatr/) here!
+
+![](cotm_treeheatr.png)
+
 ## References & Resources:
 
 - [Elements of statistical learning](https://web.stanford.edu/~hastie/Papers/ESLII.pdf)
